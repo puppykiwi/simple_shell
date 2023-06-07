@@ -1,110 +1,68 @@
-#include "mwendwa.h"
+#include "shell.h"
 
-// return shell input into the buffer
-char* getInput(bool prompt,char* inputBuffer){
-    
-    printf(MAGENTA "\n joSH > "RESET);
-    fgets(inputBuffer, DEFAULT_BUFFER_SIZE, stdin);
-    
-    //else{printf("You entered: %s", inputBuffer);} // for testing purposes
-    if(inputBuffer != NULL){return inputBuffer;}
-    else{printf(RED"Error: inputBuffer is NULL\n"RESET); return NULL;}
-}
+int exitcode = 0;
+int errorcount = 0;
 
-// parse the input buffer into args[]
-void parseInput(char* inputBuffer, char* args[]) {
-    inputBuffer[strcspn(inputBuffer, "\n")] = '\0';
+/**
+ * main - a simple shell program written in C
+ * @argc: number of arguments
+ * @argv: array of arguments
+ * @env: array of environment variables
+ *
+ * Return: 0 always (but program may exit early)
+ */
 
-    char* token = strtok(inputBuffer, " ");
-    int numArgs = 0;
+int main(__attribute__((unused)) int argc, char **argv, char **env)
+{
+	char *user_input = NULL;
+	char **commands = NULL;
+	char **path_array = NULL;
+	size_t nbytes = 0;
+	ssize_t bytes_read = 0;
+	char *NAME = argv[0];
+	int atty_is = isatty(0);
+	char *filename = "splash_screen.txt";
+	FILE *fptr = NULL;
 
-    while (token != NULL && numArgs < MAX_NUM_ARGS - 1) {
-        // Allocate memory for each argument
-        args[numArgs] = malloc(MAX_ARG_LEN * sizeof(char));
-        strncpy(args[numArgs], token, MAX_ARG_LEN - 1);
-        args[numArgs][MAX_ARG_LEN - 1] = '\0';
+	signal(SIGINT, SIG_IGN);
 
-        token = strtok(NULL, " ");
-        numArgs++;
-    }
-    args[numArgs] = NULL;
-    
-    if (args == NULL) {
-        printf(RED"Error: args is NULL\n"RESET);
-    }
-}
+	// display splash screen
+	if((fptr = fopen(filename,"r")) == NULL)
+	{
+		fprintf(stderr,"error opening %s\n",filename);
+		return 1;
+	}
+	display_splash_screen(fptr);
+	fclose(fptr);
 
-// execute the command in args[]
-void execute(char* args[], CommandHistory history){
-    
-    if (strncmp(args[0],"exit",4) == 0){
-            prompt = false;
-            exit(1);
-        }
-
-    else if(strncmp(args[0],"history",7) == 0 || strncmp(args[0],"hst",3) == 0){
-        printf("Command history: \n");
-        printCommandHistory(&history);
-    }
-
-    int pid = fork();
-    if (pid < 0){fprintf(stderr,RED"ERROR: Fork failed\n"RESET);}
-
-    else if (pid == 0){
-        //printf("** Child process created **\n"); // for testing purposes
-
-        if(strncmp(args[0],"cd", 2) == 0){
-            if (args[1] == NULL){fprintf(stderr,RED"ERROR: Dir not found\n"RESET);}
-            else if(chdir(args[1]) != 0){fprintf(stderr,RED"ERROR: chdir failed\n"RESET);}
-            printf("Directory changed to %s\n", args[1]);
-        }
-
-        else if(strncmp(args[0],"clear",5) == 0){
-            clearScreen();
-        }
-
-        else{
-            
-            if (execvp(args[0], args) < 0){
-                validCommand = false;
-                fprintf(stderr,RED"ERROR: execvp failed\n"RESET);
-                exit(1);
-                }
-
-            else{
-                validCommand = true;
-                }
-        }
-    }
-
-    else {
-        //printf("** Parent process waiting for completion **\n"); // for testing purposes
-        wait(NULL);
-        //printf("** Child process completed **\n"); // for testing purposes
-    }
-}
-
-int main(int argc, char* argv[]){
-    printf(CYAN"Welcome to joSH!\n"RESET); //banner
-
-    inputBuffer = (char*)malloc(sizeof(char) * DEFAULT_BUFFER_SIZE);
-    CommandHistory history;
-    initCommandHistory(&history);
-
-    while (prompt){
-        inputBuffer = getInput(prompt, inputBuffer); // return input into the buffer
-        printf("%s\n", inputBuffer); // for testing purposes
-
-        parseInput(inputBuffer, args); // parse the input buffer into args[]
-        
-        for (int i=0; args[i] != NULL; i++)
-            printf("%s\n", args[i]); // for testing purposes
-        
-        execute(args, history);
-        if (validCommand = true){for (int i=0; args[i] != NULL; i++){addCommand(&history, args[i]);}}
-    }
-    
-
-    cleanup();
-    return 0;
+	while (1)
+	{
+		errorcount++;
+		if (atty_is)
+			write(STDOUT_FILENO, "hella_shell$ ", 13);
+		bytes_read = getline(&user_input, &nbytes, stdin);
+		if (bytes_read == -1)
+		{
+			free(user_input);
+			exit(exitcode);
+		}
+		if (exit_check(user_input, NAME) == -1)
+			continue;
+		if (blank_check(user_input) == 1)
+			continue;
+		if (env_check(user_input) == 1)
+		{
+			print_env(env);
+			continue;
+		}
+		path_array = get_path_array(env);
+		commands = parse_input(user_input, path_array, NAME);
+		if (commands != NULL)
+		{
+			fork_wait_exec(commands, path_array, env, NAME, user_input);
+			free_array(commands);
+			free_array(path_array);
+		}
+	}
+	return (0);
 }
